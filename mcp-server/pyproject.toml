@@ -1,0 +1,19 @@
+[project]
+name = "mcp-server"
+version = "0.1.0"
+description = "学习笔记 MCP server：tools、resources、prompts"
+readme = "README.md"
+authors = [
+    { name = "zhou.lei", email = "zhou.lei@smartens-tek.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "mcp[cli]>=2.3.0",
+]
+
+[project.scripts]
+mcp-server = "mcp_server.server:main"
+
+[build-system]
+requires = ["uv_build>=0.11.16,<0.12.0"]
+build-backend = "uv_build"
