@@ -14,8 +14,15 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Annotated
 
-from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.mcpserver import (
+    AcceptedElicitation,
+    Elicit,
+    ElicitationResult,
+    MCPServer,
+    Resolve,
+)
 from mcp.server.mcpserver.exceptions import ResourceNotFoundError, ToolError
 from pydantic import BaseModel
 
@@ -69,18 +76,29 @@ class DeleteDecision(BaseModel):
     """删除确认没有额外字段。用户接受或拒绝这次 elicitation 即可。"""
 
 
-@mcp.tool(structured_output=False)
-async def delete_note(note_id: str, ctx: Context) -> str:
-    """删除一条笔记。执行过程中会向 MCP client 询问用户是否确认。"""
+def _confirm_delete(note_id: str) -> Elicit[DeleteDecision]:
+    """2026 协议：先返回问题，client 带回答重试后才执行删除。"""
     note_id = _require_text(note_id, "note_id")
     note = _notes.get(note_id)
     if note is None:
         raise ToolError(f"没有笔记 {note_id}")
-    result = await ctx.elicit(
+    return Elicit(
         message=f"MCP server 请求确认：删除笔记 {note.id}「{note.title}」？删除后无法恢复。",
         schema=DeleteDecision,
     )
-    if result.action != "accept":
+
+
+@mcp.tool(structured_output=False)
+def delete_note(
+    note_id: str,
+    decision: Annotated[ElicitationResult[DeleteDecision], Resolve(_confirm_delete)],
+) -> str:
+    """删除一条笔记。server 先向 client 要确认，用户接受后才删除。"""
+    note_id = _require_text(note_id, "note_id")
+    note = _notes.get(note_id)
+    if note is None:
+        raise ToolError(f"没有笔记 {note_id}")
+    if not isinstance(decision, AcceptedElicitation):
         return f"用户未确认，笔记 {note.id}「{note.title}」仍保留。"
     del _notes[note_id]
     return f"已删除 {note.id}：{note.title}"

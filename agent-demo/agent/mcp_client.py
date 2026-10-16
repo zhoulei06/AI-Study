@@ -91,8 +91,9 @@ class McpConnection:
         templates = ", ".join(item.uri_template for item in self.templates) or "(无)"
         prompts = ", ".join(_prompt_signature(item) for item in self.prompts) or "(无)"
         name = self.server_name or "mcp-server"
+        version = getattr(self, "protocol_version", "") or "未知版本"
         return (
-            f"MCP {name} 已连接（{self.url}）\n"
+            f"MCP {name} 已连接（{self.url}，协议 {version}）\n"
             f"  tools: {tool_names}\n"
             f"  resources: {resources}\n"
             f"  templates: {templates}\n"
@@ -212,14 +213,15 @@ MCP tool 已作为函数提供，直接调用。
             cache=None,
             read_timeout_seconds=180,
             elicitation_callback=self._on_elicitation,
-            # 2026 的单次请求没有 server 回问通道。elicitation 要走 2025 会话，
-            # 工具调用的 SSE 响应里才能插入 elicitation/create。
-            mode="legacy",
+            # auto：双方都支持时用 2026-07-28。删除确认以 InputRequiredResult 返回，
+            # client 收集用户答复后再重试同一次 tools/call。
+            mode="auto",
         )
         await client.__aenter__()
         self._client = client
         info = client.server_info
         self.server_name = info.name if info is not None else None
+        self.protocol_version = client.protocol_version
         self.instructions = client.instructions
         self.remote_tools = await _collect(client.list_tools, "tools")
         self.resources = await _collect(client.list_resources, "resources")
