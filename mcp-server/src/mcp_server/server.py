@@ -6,12 +6,13 @@
 - Resource：客户端来读的数据（目录、单条笔记）
 - Prompt：可复用的提示词模板（总结、出题）
 
-用官方 Python SDK 的 MCPServer，默认走 stdio。不要往 stdout 打印，
-stdout 是协议通道。
+用官方 Python SDK 的 MCPServer，走 Streamable HTTP。这是一个长期运行的
+HTTP 服务，agent 连过来，不会由 agent 拉起子进程。
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from mcp.server.mcpserver import MCPServer
@@ -126,4 +127,7 @@ def quiz_from_notes(topic: str) -> str:
 
 
 def main() -> None:
-    mcp.run(transport="stdio")
+    host = os.getenv("MCP_HOST", "127.0.0.1")
+    port = int(os.getenv("MCP_PORT", "8000"))
+    print(f"study-notes MCP server: http://{host}:{port}/mcp", flush=True)
+    mcp.run(transport="streamable-http", host=host, port=port)

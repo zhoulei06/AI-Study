@@ -74,13 +74,13 @@ def get_current_time(timezone: str = "local") -> str:
 
 
 _WEATHER = {
-    "beijing": {"city": "Beijing", "temp_c": 18, "condition": "晴"},
-    "北京": {"city": "Beijing", "temp_c": 18, "condition": "晴"},
-    "shanghai": {"city": "Shanghai", "temp_c": 22, "condition": "多云"},
-    "上海": {"city": "Shanghai", "temp_c": 22, "condition": "多云"},
-    "shenzhen": {"city": "Shenzhen", "temp_c": 28, "condition": "小雨"},
-    "深圳": {"city": "Shenzhen", "temp_c": 28, "condition": "小雨"},
-    "new york": {"city": "New York", "temp_c": 15, "condition": "阴"},
+    "beijing": {"city": "Beijing", "display": "北京", "temp_c": 18, "condition": "晴"},
+    "北京": {"city": "Beijing", "display": "北京", "temp_c": 18, "condition": "晴"},
+    "shanghai": {"city": "Shanghai", "display": "上海", "temp_c": 22, "condition": "多云"},
+    "上海": {"city": "Shanghai", "display": "上海", "temp_c": 22, "condition": "多云"},
+    "shenzhen": {"city": "Shenzhen", "display": "深圳", "temp_c": 28, "condition": "小雨"},
+    "深圳": {"city": "Shenzhen", "display": "深圳", "temp_c": 28, "condition": "小雨"},
+    "new york": {"city": "New York", "display": "New York", "temp_c": 15, "condition": "阴"},
 }
 
 

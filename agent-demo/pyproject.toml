@@ -5,7 +5,10 @@ description = "Handwritten OpenAI agent loop demo"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "ag-ui-protocol>=1.0,<2",
+    "fastapi>=0.115",
     "mcp>=2.3.0,<3",
     "openai>=1.40.0,<3",
     "python-dotenv>=1.0.0",
+    "uvicorn>=0.32",
 ]

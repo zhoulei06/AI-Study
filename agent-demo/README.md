@@ -63,29 +63,65 @@ uv run python main.py --max-iterations 1 "北京天气和 12*8"
 2. `agent/limits.py` — 六个安全阀
 3. `agent/loop.py` — 真正的 `while True`
 4. `main.py` — 怎么把一轮用户输入丢进 loop
-5. `agent/mcp_client.py` — 用官方 MCP Python SDK 连接旁边的 `mcp-server`
+5. `agent/mcp_client.py` — 用官方 MCP Python SDK，以 Streamable HTTP 连接旁边的 `mcp-server`
 
 ## 4. MCP
 
-`../mcp-server` 是一个学习笔记 MCP server，包含 tool、resource、prompt。Agent 启动时用 stdio 拉起它：
+`../mcp-server` 是一个学习笔记 MCP server，包含 tool、resource、prompt。它自己作为 Streamable HTTP 服务运行，Agent 只负责连接，不会拉起子进程。Agent 循环保持同步：MCP SDK 是异步的，调用放在 `mcp_client.py` 的后台事件循环里。
+
+先启动 server（笔记在这个进程的内存里，关掉就回到三条种子笔记）：
+
+```powershell
+cd "D:\work\AI Study\mcp-server"
+uv run python -m mcp_server
+```
+
+默认地址是 `http://127.0.0.1:8000/mcp`。换地址时在 `agent-demo/.env` 里加 `MCP_URL=http://127.0.0.1:8000/mcp`。
+
+然后再开一个终端跑 agent：
 
 - MCP tool（`add_note`、`search_notes`）直接变成模型可调用的函数
 - resource 由客户端读取，模型通过 `read_mcp_resource` 发起
 - prompt 由客户端取模板，模型通过 `get_mcp_prompt` 发起，再按模板继续
 
 ```powershell
+cd "D:\work\AI Study\agent-demo"
 uv run python main.py "记一条笔记，标题是 Loop，正文是 Agent 会反复调用工具。然后读取 notes://catalog，告诉我有哪些标题"
 ```
 
 ## 5. 六个限制分别卡什么
 
-| 限制 | 单位 | 含义 |
-|---|---|---|
-| `max_turns` | 用户消息 | 用户说一句、Agent 给出最终回答算 1 轮 |
-| `max_iterations` | LLM 调用 | 一轮里可能多次调模型（工具结果还要再问一遍） |
-| `max_tool_calls` | 工具执行次数 | 模型想调多少次工具，程序最多执行多少次 |
-| `timeout` | 秒 | 从 Agent 启动开始的墙钟时间 |
-| `token_budget` | token | `prompt_tokens + completion_tokens` 累计 |
-| `cost_budget` | 美元 | 用一张近似价格表估算，只为演示 |
+| 限制             | 单位         | 含义                                         |
+| ---------------- | ------------ | -------------------------------------------- |
+| `max_turns`      | 用户消息     | 用户说一句、Agent 给出最终回答算 1 轮        |
+| `max_iterations` | LLM 调用     | 一轮里可能多次调模型（工具结果还要再问一遍） |
+| `max_tool_calls` | 工具执行次数 | 模型想调多少次工具，程序最多执行多少次       |
+| `timeout`        | 秒           | 从 Agent 启动开始的墙钟时间                  |
+| `token_budget`   | token        | `prompt_tokens + completion_tokens` 累计     |
+| `cost_budget`    | 美元         | 用一张近似价格表估算，只为演示               |
 
 `loop.py` 里每次「调模型前 / 执行工具前」都会问 `LimitTracker`：还能继续吗？不能就带上 `stop_reason` 退出。
+
+## 6. 网页聊天
+
+`../front` 是 React 页面，用 `@ag-ui/client` 的 `HttpAgent` 和 Agent 通信。协议是 AG-UI：浏览器 `POST /agent`，响应是 `text/event-stream`。FastAPI 只做这层传输，循环仍是 `loop.py` 里的同步代码。
+
+三个终端，先 MCP，再 Agent 接口，再页面：
+
+```powershell
+cd "D:\work\AI Study\mcp-server"
+uv run python -m mcp_server
+```
+
+```powershell
+cd "D:\work\AI Study\agent-demo"
+uv run python -m agent.server
+```
+
+```powershell
+cd "D:\work\AI Study\front"
+pnpm install
+pnpm dev
+```
+
+Agent 接口默认 `http://127.0.0.1:8010/agent`（`AGENT_PORT` 可改）。页面开发服务器把 `/agent` 代理过去，浏览器打开 `http://127.0.0.1:5173`。一次网页请求使用一份新的限额，不和命令行共用计数。

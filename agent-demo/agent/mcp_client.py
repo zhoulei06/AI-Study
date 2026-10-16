@@ -1,25 +1,28 @@
 """把 mcp-server 接到手写 Agent 上。
 
-Agent 仍走 OpenAI tools 协议。这里做的是 MCP client：
+Agent 仍走 OpenAI tools 协议，循环本身保持同步。这里做的是 MCP client：
 
-- stdio 拉起 mcp-server
+- 用 Streamable HTTP 连接已经在跑的 mcp-server
 - 把 MCP tool 转成 Agent 的 function tool
 - resource / prompt 不是模型直接调用的原语，所以各包一层桥接工具
+
+MCP Python SDK 是异步的。CLI 一次只处理一轮用户输入，没有并发要调度，
+所以不把 agent/loop.py 改成 async，而是在后台线程里跑事件循环，
+工具调用用 run_coroutine_threadsafe 穿过去。
 """
 
 from __future__ import annotations
 
 import asyncio
-import sys
+import os
 import threading
-from pathlib import Path
 from typing import Any
 
-from mcp import Client, Implementation, StdioServerParameters
+from mcp import Client, Implementation
 
 from .tools import Tool
 
-DEFAULT_SERVER_DIR = Path(__file__).resolve().parents[2] / "mcp-server"
+DEFAULT_MCP_URL = "http://127.0.0.1:8000/mcp"
 
 
 def _block_text(block: Any) -> str:
@@ -30,10 +33,8 @@ def _block_text(block: Any) -> str:
 
 
 class McpConnection:
-    def __init__(self, server_dir: Path | None = None):
-        self.server_dir = (server_dir or DEFAULT_SERVER_DIR).resolve()
-        if not (self.server_dir / "pyproject.toml").is_file():
-            raise RuntimeError(f"找不到 MCP server：{self.server_dir}")
+    def __init__(self, url: str | None = None):
+        self.url = (url or os.getenv("MCP_URL", "").strip() or DEFAULT_MCP_URL).rstrip("/")
 
         self._closed = False
         self._client: Client | None = None
@@ -46,8 +47,13 @@ class McpConnection:
 
         try:
             self._run(self._connect(), timeout=90)
-        except Exception:
+        except Exception as exc:
             self.close()
+            if _connect_failed(exc):
+                raise RuntimeError(
+                    f"连不上 MCP server {self.url}。"
+                    "先在另一个终端启动：cd mcp-server; uv run python -m mcp_server"
+                ) from exc
             raise
 
     def openai_tools(self) -> list[Tool]:
@@ -73,7 +79,7 @@ class McpConnection:
         prompts = ", ".join(_prompt_signature(item) for item in self.prompts) or "(无)"
         name = self.server_name or "mcp-server"
         return (
-            f"MCP {name} 已连接\n"
+            f"MCP {name} 已连接（{self.url}）\n"
             f"  tools: {tool_names}\n"
             f"  resources: {resources}\n"
             f"  templates: {templates}\n"
@@ -92,7 +98,7 @@ class McpConnection:
             for item in self.prompts
         ) or "- （无）"
         server_text = f"\n服务说明：{self.instructions}" if self.instructions else ""
-        return f"""已通过 stdio 连接 MCP server「{self.server_name or "mcp-server"}」。{server_text}
+        return f"""已通过 Streamable HTTP 连接 MCP server「{self.server_name or "mcp-server"}」（{self.url}）。{server_text}
 MCP tool 已作为函数提供，直接调用。
 读 resource 时调用 read_mcp_resource。已知资源：
 {resources}
@@ -185,12 +191,7 @@ MCP tool 已作为函数提供，直接调用。
 
     async def _connect(self) -> None:
         client = Client(
-            StdioServerParameters(
-                command="uv",
-                args=["run", "--directory", str(self.server_dir), "python", "-m", "mcp_server"],
-                cwd=self.server_dir,
-                env={"PYTHONUNBUFFERED": "1"},
-            ),
+            self.url,
             client_info=Implementation(name="agent-demo", version="0.1.0"),
             cache=None,
             read_timeout_seconds=60,
@@ -223,8 +224,6 @@ MCP tool 已作为函数提供，直接调用。
         return asyncio.run_coroutine_threadsafe(coro, loop).result(timeout=timeout)
 
     def _thread_main(self) -> None:
-        if sys.platform == "win32":
-            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
         self._ready.set()
@@ -242,6 +241,24 @@ async def _collect(list_page: Any, field: str) -> list[Any]:
         if not cursor:
             return items
     return items
+
+
+def _connect_failed(exc: BaseException) -> bool:
+    pending = [exc]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if type(current).__name__ in {"ConnectError", "ConnectTimeout", "ConnectionRefusedError"}:
+            return True
+        pending.extend(getattr(current, "exceptions", ()))
+        if current.__cause__ is not None:
+            pending.append(current.__cause__)
+        if current.__context__ is not None:
+            pending.append(current.__context__)
+    return False
 
 
 def _prompt_signature(prompt: Any) -> str:
