@@ -16,13 +16,24 @@ from __future__ import annotations
 import asyncio
 import os
 import threading
-from typing import Any
+import uuid
+from typing import Any, Callable
 
 from mcp import Client, Implementation
+from mcp import types as mcp_types
 
 from .tools import Tool
 
 DEFAULT_MCP_URL = "http://127.0.0.1:8000/mcp"
+
+
+def _cli_elicit(message: str) -> str:
+    print(f"\n{message}", flush=True)
+    try:
+        answer = input("接受这次 MCP 确认？[y/N] ").strip().lower()
+    except EOFError:
+        return "cancel"
+    return "accept" if answer in {"y", "yes", "接受"} else "decline"
 
 
 def _block_text(block: Any) -> str:
@@ -38,6 +49,8 @@ class McpConnection:
 
         self._closed = False
         self._client: Client | None = None
+        self._elicit_waiters: dict[str, asyncio.Future[str]] = {}
+        self._on_elicit_ui: Callable[[str, str, str], None] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._ready = threading.Event()
         self._thread = threading.Thread(target=self._thread_main, name="mcp-client", daemon=True)
@@ -124,7 +137,10 @@ MCP tool 已作为函数提供，直接调用。
 
     def _tool_handler(self, name: str):
         def handler(**arguments: Any) -> str:
-            result = self._run(self._require_client().call_tool(name, arguments or None))
+            result = self._run(
+                self._require_client().call_tool(name, arguments or None),
+                timeout=180,
+            )
             parts = [_block_text(block) for block in result.content]
             if not parts and result.structured_content is not None:
                 parts.append(str(result.structured_content))
@@ -194,7 +210,11 @@ MCP tool 已作为函数提供，直接调用。
             self.url,
             client_info=Implementation(name="agent-demo", version="0.1.0"),
             cache=None,
-            read_timeout_seconds=60,
+            read_timeout_seconds=180,
+            elicitation_callback=self._on_elicitation,
+            # 2026 的单次请求没有 server 回问通道。elicitation 要走 2025 会话，
+            # 工具调用的 SSE 响应里才能插入 elicitation/create。
+            mode="legacy",
         )
         await client.__aenter__()
         self._client = client
@@ -211,6 +231,72 @@ MCP tool 已作为函数提供，直接调用。
         self._client = None
         if client is not None:
             await client.__aexit__(None, None, None)
+
+    def set_elicit_ui(self, handler: Callable[[str, str, str], None] | None) -> None:
+        """网页一轮对话期间，把 MCP elicitation 推到页面上。"""
+        self._on_elicit_ui = handler
+
+    def resolve_elicit(self, elicit_id: str, action: str) -> bool:
+        loop = self._loop
+        if loop is None or action not in {"accept", "decline", "cancel"}:
+            return False
+
+        async def _set() -> bool:
+            future = self._elicit_waiters.get(elicit_id)
+            if future is None or future.done():
+                return False
+            future.set_result(action)
+            return True
+
+        return bool(self._run(_set(), timeout=5))
+
+    def cancel_pending_elicit(self) -> None:
+        loop = self._loop
+        if loop is None:
+            return
+
+        async def _cancel() -> None:
+            for future in list(self._elicit_waiters.values()):
+                if not future.done():
+                    future.set_result("cancel")
+
+        try:
+            self._run(_cancel(), timeout=5)
+        except Exception:
+            return
+
+    async def _on_elicitation(
+        self,
+        _context: Any,
+        params: mcp_types.ElicitRequestParams,
+    ) -> mcp_types.ElicitResult | mcp_types.ErrorData:
+        if getattr(params, "mode", None) == "url":
+            return mcp_types.ErrorData(
+                code=mcp_types.INVALID_REQUEST,
+                message="这个演示只处理表单确认",
+            )
+        elicit_id = str(uuid.uuid4())
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[str] = loop.create_future()
+        self._elicit_waiters[elicit_id] = future
+        handler = self._on_elicit_ui
+        message = str(getattr(params, "message", "") or "MCP server 请求确认")
+        try:
+            if handler is None:
+                action = await asyncio.to_thread(_cli_elicit, message)
+            else:
+                handler(elicit_id, message, "start")
+                action = await asyncio.wait_for(future, timeout=150)
+                handler(elicit_id, message, "end")
+        except asyncio.TimeoutError:
+            action = "cancel"
+        finally:
+            self._elicit_waiters.pop(elicit_id, None)
+        if action == "accept":
+            return mcp_types.ElicitResult(action="accept", content={})
+        if action == "decline":
+            return mcp_types.ElicitResult(action="decline")
+        return mcp_types.ElicitResult(action="cancel")
 
     def _require_client(self) -> Client:
         if self._client is None:

@@ -15,13 +15,15 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ResourceNotFoundError, ToolError
+from pydantic import BaseModel
 
 mcp = MCPServer(
     "study-notes",
     instructions=(
-        "这是学习笔记服务。记笔记和搜索用 tool；"
+        "这是学习笔记服务。记笔记、删除和搜索用 tool；"
+        "删除时 server 会向 client 发起确认；"
         "读目录用 notes://catalog，读单条用 notes://{id}；"
         "总结用 prompt summarize_notes，出题用 prompt quiz_from_notes。"
     ),
@@ -61,6 +63,27 @@ def add_note(title: str, body: str) -> str:
     note_id = f"n{_seq}"
     _notes[note_id] = Note(note_id, title, body)
     return f"已记下 {note_id}：{title}\n读取地址：notes://{note_id}"
+
+
+class DeleteDecision(BaseModel):
+    """删除确认没有额外字段。用户接受或拒绝这次 elicitation 即可。"""
+
+
+@mcp.tool(structured_output=False)
+async def delete_note(note_id: str, ctx: Context) -> str:
+    """删除一条笔记。执行过程中会向 MCP client 询问用户是否确认。"""
+    note_id = _require_text(note_id, "note_id")
+    note = _notes.get(note_id)
+    if note is None:
+        raise ToolError(f"没有笔记 {note_id}")
+    result = await ctx.elicit(
+        message=f"MCP server 请求确认：删除笔记 {note.id}「{note.title}」？删除后无法恢复。",
+        schema=DeleteDecision,
+    )
+    if result.action != "accept":
+        return f"用户未确认，笔记 {note.id}「{note.title}」仍保留。"
+    del _notes[note_id]
+    return f"已删除 {note.id}：{note.title}"
 
 
 @mcp.tool(structured_output=False)
