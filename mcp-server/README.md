@@ -4,13 +4,15 @@
 
 | 原语 | 名字 | 作用 |
 |---|---|---|
-| Tool | `add_note` / `search_notes` | 记笔记、搜索 |
+| Tool | `add_note` / `delete_note` / `search_notes` | 记笔记、删除、搜索。删除和新增需要写权限 |
 | Resource | `notes://catalog` | 笔记目录 |
 | Resource 模板 | `notes://{note_id}` | 读一条笔记，例如 `notes://n1` |
 | Prompt | `summarize_notes` | 总结笔记库的提示词 |
 | Prompt | `quiz_from_notes` | 按主题出题的提示词 |
 
-笔记在进程内存里，服务退出后恢复成三条种子笔记。
+登录由 Keycloak 签发 access token，这个进程只校验 token。笔记按用户名分开，存在进程内存里；服务退出后，每个人恢复成三条种子笔记。alice 可以新增和删除，bob 只有读取权限。
+
+先启动 Keycloak，见仓库根目录的启动说明。然后：
 
 ```powershell
 cd "D:\work\AI Study\mcp-server"

@@ -1,12 +1,13 @@
 # 启动说明
 
-网页聊天要同时开三个进程，顺序不能反：先笔记服务，再 Agent 接口，最后页面。命令行聊天只需要前两个，Agent 接口可以不启。
+网页聊天要同时开四个进程，顺序不能反：先 Keycloak，再笔记服务，再 Agent 接口，最后页面。命令行聊天可以不启页面。Agent 启动时会打开浏览器，登录完成后才继续。
 
 | 顺序 | 目录 | 做什么 | 地址 |
 | --- | --- | --- | --- |
-| 1 | `mcp-server` | 学习笔记 MCP 服务，Streamable HTTP | `http://127.0.0.1:8000/mcp` |
-| 2 | `agent-demo` | Agent 循环。命令行直接跑，网页走 FastAPI | 接口 `http://127.0.0.1:8010/agent` |
-| 3 | `front` | React 聊天页，用 AG-UI 调上面的接口 | `http://127.0.0.1:5173` |
+| 1 | `keycloak` | 登录和角色。alice 可写，bob 只读 | `http://localhost:8080` |
+| 2 | `mcp-server` | 学习笔记 MCP 服务，校验 Keycloak 的 token | `http://127.0.0.1:8000/mcp` |
+| 3 | `agent-demo` | Agent 循环。命令行直接跑，网页走 FastAPI | 接口 `http://127.0.0.1:8010/agent` |
+| 4 | `front` | React 聊天页，用 AG-UI 调上面的接口 | `http://127.0.0.1:5173` |
 
 每个服务一个终端，开着不要关。
 
@@ -33,9 +34,33 @@ OPENAI_BASE_URL=https://api.deepseek.com
 
 前端用 pnpm。本机的 Node 是 vfox 里的 `node.exe`，没有单独的 `npm`。
 
-## 1. mcp-server
+## 1. Keycloak
 
-笔记在这个进程的内存里。关掉进程后，笔记回到最初的三条。
+本机演示账号，只供这个仓库使用：
+
+| 用户 | 密码 | 权限 |
+| --- | --- | --- |
+| alice | alice | 读取、新增、删除自己的笔记 |
+| bob | bob | 只能读取自己的笔记 |
+| admin | admin | Keycloak 管理台，不用于笔记 |
+
+```powershell
+cd "D:\work\AI Study\keycloak"
+docker compose up
+```
+
+看到 Keycloak 监听 `8080` 后，浏览器能打开 `http://localhost:8080` 再进行下一步。登录页请用 `localhost`，不要改成 `127.0.0.1`。管理台用 admin / admin，realm 选 `study`。
+
+改过 `study-realm.json` 之后要重建一次，否则还是旧配置：
+
+```powershell
+docker compose down
+docker compose up
+```
+
+## 2. mcp-server
+
+笔记在这个进程的内存里，并且按登录用户分开。关掉进程后，每个人的笔记回到最初的三条。
 
 ```powershell
 cd "D:\work\AI Study\mcp-server"
@@ -44,7 +69,7 @@ uv run python -m mcp_server
 
 看到 `study-notes MCP server: http://127.0.0.1:8000/mcp` 就可以进行下一步。
 
-换端口时在这个终端里设环境变量，Agent 那边要改成同一个地址：
+换端口时在这个终端里设环境变量，Agent 那边要改成同一个地址。token 的受众默认是 `http://127.0.0.1:8000/mcp`，和 Keycloak 里的 Audience 一致；地址改了的话，两边都要改。
 
 ```powershell
 $env:MCP_HOST = "127.0.0.1"
@@ -52,9 +77,9 @@ $env:MCP_PORT = "8000"
 uv run python -m mcp_server
 ```
 
-## 2. agent-demo
+## 3. agent-demo
 
-这个目录有两种启动方式，都要等 mcp-server 已经在听。
+这个目录有两种启动方式，都要等 Keycloak 和 mcp-server 已经在听。启动后浏览器会打开 Keycloak 登录页，登录成功 Agent 才算连上笔记服务。
 
 网页聊天用 FastAPI。它会去连 MCP，连上后停在 `http://127.0.0.1:8010`：
 
@@ -92,9 +117,9 @@ uv run python -m agent.server
 
 `8010` 改掉以后，前端也要指向新地址，见下一节的 `VITE_AGENT_URL`。
 
-## 3. front
+## 4. front
 
-页面启动前，8010 上的 Agent 接口要已经起来。
+页面启动前，8010 上的 Agent 接口要已经起来，也就是 Keycloak 登录已经完成。
 
 ```powershell
 cd "D:\work\AI Study\front"

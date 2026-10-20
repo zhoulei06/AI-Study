@@ -345,10 +345,14 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "mcp", extra = ["cli"] },
+    { name = "pyjwt", extra = ["crypto"] },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "mcp", extras = ["cli"], specifier = ">=2.3.0" }]
+requires-dist = [
+    { name = "mcp", extras = ["cli"], specifier = ">=2.3.0" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10" },
+]
 
 [[package]]
 name = "mcp-types"

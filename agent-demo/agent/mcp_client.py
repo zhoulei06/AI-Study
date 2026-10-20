@@ -3,6 +3,7 @@
 Agent 仍走 OpenAI tools 协议，循环本身保持同步。这里做的是 MCP client：
 
 - 用 Streamable HTTP 连接已经在跑的 mcp-server
+- 第一次连接时打开 Keycloak 登录页，之后请求带 access token
 - 把 MCP tool 转成 Agent 的 function tool
 - resource / prompt 不是模型直接调用的原语，所以各包一层桥接工具
 
@@ -21,7 +22,9 @@ from typing import Any, Callable
 
 from mcp import Client, Implementation
 from mcp import types as mcp_types
+from mcp.client.streamable_http import streamable_http_client
 
+from .mcp_auth import LoginCallback, MemoryTokenStore, build_http_client, oauth_settings
 from .tools import Tool
 
 DEFAULT_MCP_URL = "http://127.0.0.1:8000/mcp"
@@ -49,6 +52,9 @@ class McpConnection:
 
         self._closed = False
         self._client: Client | None = None
+        self._http: Any | None = None
+        self._login: LoginCallback | None = None
+        self._username: str | None = None
         self._elicit_waiters: dict[str, asyncio.Future[str]] = {}
         self._on_elicit_ui: Callable[[str, str, str], None] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -59,9 +65,16 @@ class McpConnection:
             raise RuntimeError("MCP 客户端事件循环没有启动")
 
         try:
-            self._run(self._connect(), timeout=90)
+            self._run(self._connect(), timeout=330)
         except Exception as exc:
             self.close()
+            if _login_failed(exc):
+                raise RuntimeError(
+                    "MCP 登录没有完成。"
+                    f"{exc}\n"
+                    "先启动 Keycloak：cd keycloak; docker compose up 。"
+                    "浏览器里用 alice/alice（可写）或 bob/bob（只读）登录。"
+                ) from exc
             if _connect_failed(exc):
                 raise RuntimeError(
                     f"连不上 MCP server {self.url}。"
@@ -92,8 +105,9 @@ class McpConnection:
         prompts = ", ".join(_prompt_signature(item) for item in self.prompts) or "(无)"
         name = self.server_name or "mcp-server"
         version = getattr(self, "protocol_version", "") or "未知版本"
+        who = f"\n  登录用户: {self._username}" if self._username else ""
         return (
-            f"MCP {name} 已连接（{self.url}，协议 {version}）\n"
+            f"MCP {name} 已连接（{self.url}，协议 {version}）{who}\n"
             f"  tools: {tool_names}\n"
             f"  resources: {resources}\n"
             f"  templates: {templates}\n"
@@ -128,11 +142,10 @@ MCP tool 已作为函数提供，直接调用。
         loop = self._loop
         if loop is None or not loop.is_running():
             return
-        if self._client is not None:
-            try:
-                self._run(self._shutdown(), timeout=15)
-            except Exception:
-                pass
+        try:
+            self._run(self._shutdown(), timeout=15)
+        except Exception:
+            pass
         loop.call_soon_threadsafe(loop.stop)
         self._thread.join(timeout=5)
 
@@ -207,8 +220,15 @@ MCP tool 已作为函数提供，直接调用。
         ]
 
     async def _connect(self) -> None:
+        redirect_uri, client_id = oauth_settings()
+        login = LoginCallback(redirect_uri)
+        await login.start()
+        self._login = login
+        store = MemoryTokenStore(client_id, redirect_uri)
+        http = build_http_client(self.url, login, store)
+        self._http = http
         client = Client(
-            self.url,
+            streamable_http_client(self.url, http_client=http),
             client_info=Implementation(name="agent-demo", version="0.1.0"),
             cache=None,
             read_timeout_seconds=180,
@@ -219,6 +239,7 @@ MCP tool 已作为函数提供，直接调用。
         )
         await client.__aenter__()
         self._client = client
+        self._username = store.username
         info = client.server_info
         self.server_name = info.name if info is not None else None
         self.protocol_version = client.protocol_version
@@ -233,6 +254,14 @@ MCP tool 已作为函数提供，直接调用。
         self._client = None
         if client is not None:
             await client.__aexit__(None, None, None)
+        http = self._http
+        self._http = None
+        if http is not None:
+            await http.aclose()
+        login = self._login
+        self._login = None
+        if login is not None:
+            await login.close()
 
     def set_elicit_ui(self, handler: Callable[[str, str, str], None] | None) -> None:
         """网页一轮对话期间，把 MCP elicitation 推到页面上。"""
@@ -329,6 +358,24 @@ async def _collect(list_page: Any, field: str) -> list[Any]:
         if not cursor:
             return items
     return items
+
+
+def _login_failed(exc: BaseException) -> bool:
+    pending = [exc]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if type(current).__name__ in {"OAuthFlowError", "OAuthTokenError", "OAuthRegistrationError", "TimeoutError"}:
+            return True
+        pending.extend(getattr(current, "exceptions", ()))
+        if current.__cause__ is not None:
+            pending.append(current.__cause__)
+        if current.__context__ is not None:
+            pending.append(current.__context__)
+    return False
 
 
 def _connect_failed(exc: BaseException) -> bool:

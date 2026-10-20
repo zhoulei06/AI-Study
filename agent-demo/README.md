@@ -69,7 +69,9 @@ uv run python main.py --max-iterations 1 "北京天气和 12*8"
 
 `../mcp-server` 是一个学习笔记 MCP server，包含 tool、resource、prompt。它自己作为 Streamable HTTP 服务运行，Agent 只负责连接，不会拉起子进程。Agent 循环保持同步：MCP SDK 是异步的，调用放在 `mcp_client.py` 的后台事件循环里。
 
-先启动 server（笔记在这个进程的内存里，关掉就回到三条种子笔记）：
+笔记服务要求 Keycloak 登录。先按仓库根目录的说明启动 Keycloak，再用 alice / alice 或 bob / bob 登录。笔记按用户分开，存在 mcp-server 进程的内存里，关掉就回到该用户的三条种子笔记。
+
+先启动 server：
 
 ```powershell
 cd "D:\work\AI Study\mcp-server"
