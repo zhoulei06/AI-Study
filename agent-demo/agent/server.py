@@ -1,7 +1,7 @@
 """AG-UI HTTP 入口。
 
 前端 HttpAgent 向 POST /agent 提交 RunAgentInput，响应是 SSE。
-Agent 循环仍是同步的，放在线程里跑；循环里的工具和回答通过队列变成 AG-UI 事件。
+LangGraph 在线程里跑；图里的工具和回答通过队列变成 AG-UI 事件。
 
 MCP server 占着 8000，这个接口默认 8010。
 """
@@ -46,12 +46,13 @@ from ag_ui.core import (
     ToolCallEndEvent,
     ToolCallResultEvent,
     ToolCallStartEvent,
-    ToolMessage,
+    ToolMessage as AGUIToolMessage,
     UserMessage,
 )
 from ag_ui.encoder import EventEncoder
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -64,7 +65,7 @@ load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    agent = Agent(verbose=True)
+    agent = Agent(verbose=True, thinking=True)
     app.state.agent = agent
     app.state.lock = threading.Lock()
     try:
@@ -110,7 +111,7 @@ async def agent_endpoint(run_input: RunAgentInput, request: Request) -> Streamin
     agent: Agent = request.app.state.agent
     lock: threading.Lock = request.app.state.lock
     try:
-        messages = _to_openai_messages(run_input, agent.system_prompt)
+        messages = _to_agent_messages(run_input)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -189,6 +190,7 @@ async def agent_endpoint(run_input: RunAgentInput, request: Request) -> Streamin
                         tracker=LimitTracker(agent.limits, agent.model),
                         on_event=observe,
                         approvals=_approvals(run_input),
+                        thread_id=run_input.thread_id,
                     )
                 if result.approval is not None:
                     approval = result.approval
@@ -309,46 +311,49 @@ def _approvals(run_input: RunAgentInput) -> dict[str, bool]:
     return found
 
 
-def _to_openai_messages(run_input: RunAgentInput, system_prompt: str) -> list[dict[str, Any]]:
-    messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+def _to_agent_messages(run_input: RunAgentInput) -> list[BaseMessage]:
+    messages: list[BaseMessage] = []
     # 带工具的思考模式要求下一轮把 reasoning_content 放回对应的 assistant。
     pending_reasoning: list[str] = []
     for message in run_input.messages:
         if isinstance(message, ReasoningMessage):
             text = message.content or ""
-            if messages and messages[-1]["role"] == "assistant" and "reasoning_content" not in messages[-1]:
-                messages[-1]["reasoning_content"] = text
+            if messages and isinstance(messages[-1], AIMessage) and "reasoning_content" not in messages[-1].additional_kwargs:
+                messages[-1].additional_kwargs["reasoning_content"] = text
             else:
                 pending_reasoning.append(text)
         elif isinstance(message, UserMessage):
-            messages.append({"role": "user", "content": _text(message.content)})
+            messages.append(HumanMessage(content=_text(message.content)))
         elif isinstance(message, AssistantMessage):
-            item: dict[str, Any] = {"role": "assistant", "content": message.content or None}
-            if message.tool_calls:
-                item["tool_calls"] = [
-                    {
-                        "id": call.id,
-                        "type": "function",
-                        "function": {
-                            "name": call.function.name,
-                            "arguments": call.function.arguments or "{}",
-                        },
-                    }
-                    for call in message.tool_calls
-                ]
+            tool_calls = []
+            for call in message.tool_calls or []:
+                raw = call.function.arguments or "{}"
+                try:
+                    args = json.loads(raw)
+                except json.JSONDecodeError:
+                    args = {}
+                if not isinstance(args, dict):
+                    args = {}
+                tool_calls.append({"id": call.id, "name": call.function.name, "args": args})
+            extra: dict[str, Any] = {}
             if pending_reasoning:
-                item["reasoning_content"] = "\n".join(pending_reasoning)
+                extra["reasoning_content"] = "\n".join(pending_reasoning)
                 pending_reasoning.clear()
-            messages.append(item)
-        elif isinstance(message, ToolMessage):
             messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": message.tool_call_id,
-                    "content": _text(message.content),
-                }
+                AIMessage(
+                    content=message.content or "",
+                    tool_calls=tool_calls,
+                    additional_kwargs=extra,
+                )
             )
-    if len(messages) == 1:
+        elif isinstance(message, AGUIToolMessage):
+            messages.append(
+                ToolMessage(
+                    content=_text(message.content),
+                    tool_call_id=message.tool_call_id,
+                )
+            )
+    if not any(isinstance(item, HumanMessage) for item in messages):
         raise ValueError("没有可处理的用户消息")
     return messages
 

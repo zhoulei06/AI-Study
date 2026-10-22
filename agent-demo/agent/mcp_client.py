@@ -1,15 +1,14 @@
-"""把 mcp-server 接到手写 Agent 上。
+"""把 mcp-server 接到 LangGraph Agent 上。
 
-Agent 仍走 OpenAI tools 协议，循环本身保持同步。这里做的是 MCP client：
+Agent 循环在 LangGraph 里，这里只做 MCP client：
 
 - 用 Streamable HTTP 连接已经在跑的 mcp-server
 - 第一次连接时打开 Keycloak 登录页，之后请求带 access token
-- 把 MCP tool 转成 Agent 的 function tool
+- 把 MCP tool 转成 Agent 可调用的函数
 - resource / prompt 不是模型直接调用的原语，所以各包一层桥接工具
 
-MCP Python SDK 是异步的。CLI 一次只处理一轮用户输入，没有并发要调度，
-所以不把 agent/loop.py 改成 async，而是在后台线程里跑事件循环，
-工具调用用 run_coroutine_threadsafe 穿过去。
+MCP Python SDK 是异步的。图的工具节点是同步的，
+所以在后台线程里跑事件循环，工具调用用 run_coroutine_threadsafe 穿过去。
 """
 
 from __future__ import annotations
@@ -82,7 +81,7 @@ class McpConnection:
                 ) from exc
             raise
 
-    def openai_tools(self) -> list[Tool]:
+    def agent_tools(self) -> list[Tool]:
         tools: list[Tool] = []
         for spec in self.remote_tools:
             parameters = dict(spec.input_schema)
@@ -98,6 +97,10 @@ class McpConnection:
         tools.extend(self._bridge_tools())
         return tools
 
+    @property
+    def username(self) -> str | None:
+        return self._username
+
     def startup_summary(self) -> str:
         tool_names = ", ".join(tool.name for tool in self.remote_tools) or "(无)"
         resources = ", ".join(item.uri for item in self.resources) or "(无)"
@@ -105,7 +108,7 @@ class McpConnection:
         prompts = ", ".join(_prompt_signature(item) for item in self.prompts) or "(无)"
         name = self.server_name or "mcp-server"
         version = getattr(self, "protocol_version", "") or "未知版本"
-        who = f"\n  登录用户: {self._username}" if self._username else ""
+        who = f"\n  登录用户: {self.username}" if self.username else ""
         return (
             f"MCP {name} 已连接（{self.url}，协议 {version}）{who}\n"
             f"  tools: {tool_names}\n"

@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable
 
+from langchain_core.tools import StructuredTool
+
 
 @dataclass
 class Tool:
@@ -22,15 +24,9 @@ class Tool:
     handler: Callable[..., str]
 
     def schema(self) -> dict[str, Any]:
-        # OpenAI Chat Completions 要求的 function tool 格式
-        return {
-            "type": "function",
-            "function": {
-                "name": self.name,
-                "description": self.description,
-                "parameters": self.parameters,
-            },
-        }
+        parameters = dict(self.parameters)
+        parameters.setdefault("type", "object")
+        return parameters
 
 
 _OPS = {
@@ -102,6 +98,9 @@ class ToolRegistry:
     def schemas(self) -> list[dict[str, Any]]:
         return [tool.schema() for tool in self._tools.values()]
 
+    def langchain_tools(self) -> list[StructuredTool]:
+        return [_langchain_tool(tool) for tool in self._tools.values()]
+
     def extend(self, tools: list[Tool]) -> None:
         for tool in tools:
             if tool.name in self._tools:
@@ -126,6 +125,26 @@ class ToolRegistry:
             return f"Error: bad arguments for {name}: {exc}"
         except Exception as exc:
             return f"Error while running {name}: {exc}"
+
+
+def _langchain_tool(tool: Tool) -> StructuredTool:
+    def run(**kwargs: Any) -> str:
+        cleaned = {key: value for key, value in kwargs.items() if value is not None}
+        try:
+            return str(tool.handler(**cleaned))
+        except TypeError as exc:
+            return f"Error: bad arguments for {tool.name}: {exc}"
+        except Exception as exc:
+            return f"Error while running {tool.name}: {exc}"
+
+    parameters = dict(tool.parameters)
+    parameters.setdefault("type", "object")
+    return StructuredTool(
+        name=tool.name,
+        description=tool.description or tool.name,
+        args_schema=parameters,
+        func=run,
+    )
 
 
 def default_tools() -> ToolRegistry:

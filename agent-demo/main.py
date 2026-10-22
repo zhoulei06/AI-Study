@@ -19,7 +19,7 @@ load_dotenv(ROOT / ".env")
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="手写 OpenAI Agent Loop 演示")
+    parser = argparse.ArgumentParser(description="LangGraph Agent 演示")
     parser.add_argument("prompt", nargs="*", help="直接传入问题；省略则进入多轮聊天")
     parser.add_argument("--max-iterations", type=int, default=8)
     parser.add_argument("--max-turns", type=int, default=8)

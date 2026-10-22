@@ -27,9 +27,9 @@ pnpm install
 在 `agent-demo/.env` 里填入 [DeepSeek](https://platform.deepseek.com/api_keys) 的 key：
 
 ```env
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=deepseek-chat
-OPENAI_BASE_URL=https://api.deepseek.com
+DEEPSEEK_API_KEY=sk-...
+DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_BASE_URL=https://api.deepseek.com
 ```
 
 前端用 pnpm。本机的 Node 是 vfox 里的 `node.exe`，没有单独的 `npm`。
@@ -79,7 +79,14 @@ uv run python -m mcp_server
 
 ## 3. agent-demo
 
-这个目录有两种启动方式，都要等 Keycloak 和 mcp-server 已经在听。启动后浏览器会打开 Keycloak 登录页，登录成功 Agent 才算连上笔记服务。
+会话 checkpoint 和长期记忆都用 PostgreSQL，长期记忆另有 pgvector。Agent 启动前先把数据库拉起来，容器可以一直开着：
+
+```powershell
+cd "D:\work\AI Study\agent-demo"
+docker compose up -d
+```
+
+这个目录有两种启动方式，都要等 Keycloak、mcp-server 和上面的数据库已经在听。启动后浏览器会打开 Keycloak 登录页，登录成功 Agent 才算连上笔记服务。
 
 网页聊天用 FastAPI。它会去连 MCP，连上后停在 `http://127.0.0.1:8010`：
 
