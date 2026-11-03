@@ -1,4 +1,4 @@
 {
-  "python.defaultInterpreterPath": "${workspaceFolder}/agent-demo/.venv/Scripts/python.exe",
+  "python.defaultInterpreterPath": "${workspaceFolder}/agent-server/.venv/Scripts/python.exe",
   "python.terminal.activateEnvironment": true
 }

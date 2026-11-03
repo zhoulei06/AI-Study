@@ -20,6 +20,6 @@ uv sync
 uv run python -m mcp_server
 ```
 
-单独运行后停在 HTTP 上等待客户端。`agent-demo` 不会拉起这个进程，要先在这里启动，再去跑 agent。
+单独运行后停在 HTTP 上等待客户端。`agent-server` 不会拉起这个进程，要先在这里启动，再去跑 agent。
 
 地址可用环境变量改：`MCP_HOST`（默认 `127.0.0.1`）、`MCP_PORT`（默认 `8000`）。客户端对应的是 `MCP_URL`，默认 `http://127.0.0.1:8000/mcp`。

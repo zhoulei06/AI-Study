@@ -1,12 +1,14 @@
 # 启动说明
 
+项目架构、目录职责和主要调用链见 [项目架构与目录说明](项目架构与目录说明.md)。
+
 网页聊天要同时开四个进程，顺序不能反：先 Keycloak，再笔记服务，再 Agent 接口，最后页面。命令行聊天可以不启页面。Agent 启动时会打开浏览器，登录完成后才继续。
 
 | 顺序 | 目录 | 做什么 | 地址 |
 | --- | --- | --- | --- |
 | 1 | `keycloak` | 登录和角色。alice 可写，bob 只读 | `http://localhost:8080` |
 | 2 | `mcp-server` | 学习笔记 MCP 服务，校验 Keycloak 的 token | `http://127.0.0.1:8000/mcp` |
-| 3 | `agent-demo` | Agent 循环。命令行直接跑，网页走 FastAPI | 接口 `http://127.0.0.1:8010/agent` |
+| 3 | `agent-server` | Agent 循环。命令行直接跑，网页走 FastAPI | 接口 `http://127.0.0.1:8010/agent` |
 | 4 | `front` | React 聊天页，用 AG-UI 调上面的接口 | `http://127.0.0.1:5173` |
 
 每个服务一个终端，开着不要关。
@@ -17,14 +19,14 @@
 cd "D:\work\AI Study\mcp-server"
 uv sync
 
-cd "D:\work\AI Study\agent-demo"
+cd "D:\work\AI Study\agent-server"
 uv sync
 
 cd "D:\work\AI Study\front"
 pnpm install
 ```
 
-在 `agent-demo/.env` 里填入 [DeepSeek](https://platform.deepseek.com/api_keys) 的 key：
+在 `agent-server/.env` 里填入 [DeepSeek](https://platform.deepseek.com/api_keys) 的 key：
 
 ```env
 DEEPSEEK_API_KEY=sk-...
@@ -77,12 +79,12 @@ $env:MCP_PORT = "8000"
 uv run python -m mcp_server
 ```
 
-## 3. agent-demo
+## 3. agent-server
 
 会话 checkpoint 和长期记忆都用 PostgreSQL，长期记忆另有 pgvector。Agent 启动前先把数据库拉起来，容器可以一直开着：
 
 ```powershell
-cd "D:\work\AI Study\agent-demo"
+cd "D:\work\AI Study\agent-server"
 docker compose up -d
 ```
 
@@ -91,14 +93,14 @@ docker compose up -d
 网页聊天用 FastAPI。它会去连 MCP，连上后停在 `http://127.0.0.1:8010`：
 
 ```powershell
-cd "D:\work\AI Study\agent-demo"
+cd "D:\work\AI Study\agent-server"
 uv run python -m agent.server
 ```
 
 命令行聊天不经过 8010，直接在终端里问：
 
 ```powershell
-cd "D:\work\AI Study\agent-demo"
+cd "D:\work\AI Study\agent-server"
 uv run python main.py
 ```
 
@@ -108,7 +110,7 @@ uv run python main.py
 uv run python main.py "现在几点了？北京天气怎么样？再帮我算 23*17"
 ```
 
-MCP 不在默认地址时，在 `agent-demo/.env` 里加：
+MCP 不在默认地址时，在 `agent-server/.env` 里加：
 
 ```env
 MCP_URL=http://127.0.0.1:8000/mcp

@@ -1,0 +1,127 @@
+.sidebar {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 16px;
+  border-right: 1px solid #ddd4c4;
+  background: #ebe5d9;
+}
+
+.sidebar-top h2 {
+  margin: 0 0 14px;
+  font-size: 18px;
+}
+
+.sidebar-top button {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #d7ccb8;
+  border-radius: 10px;
+  background: #fffdf8;
+  cursor: pointer;
+}
+
+.conversation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.conversation strong {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.conversation span {
+  color: #6f675c;
+  font-size: 12px;
+}
+
+.conversation-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid #d7ccb8;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.conversation-row .conversation {
+  flex: 1;
+  min-width: 0;
+}
+
+.conversation-row.active {
+  border-color: #8a5a12;
+}
+
+.delete-conversation {
+  flex-shrink: 0;
+  margin-right: 6px;
+  padding: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #8d2b1f;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.delete-conversation:hover {
+  background: #fdeceb;
+}
+
+.conversation-row:hover {
+  border-color: #8a5a12;
+}
+
+@media (max-width: 760px) {
+  .sidebar {
+    padding: 12px;
+    border-right: 0;
+    border-bottom: 1px solid #ddd4c4;
+  }
+
+  .sidebar-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .sidebar-top h2 {
+    margin: 0;
+  }
+
+  .sidebar-top button {
+    width: auto;
+  }
+
+  .conversation-list {
+    flex-direction: row;
+    overflow-x: auto;
+    margin-top: 10px;
+  }
+
+  .conversation-row {
+    flex: 0 0 200px;
+  }
+
+}

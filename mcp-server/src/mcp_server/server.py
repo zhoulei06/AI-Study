@@ -27,6 +27,7 @@ from mcp.server.mcpserver import (
     Resolve,
 )
 from mcp.server.mcpserver.exceptions import ResourceNotFoundError, ToolError
+from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl, BaseModel
 
 from .auth import READ_SCOPE, WRITE_SCOPE, KeycloakTokenVerifier
@@ -105,7 +106,7 @@ def _next_id(library: dict[str, Note]) -> str:
     return f"n{max(numbers, default=0) + 1}"
 
 
-@mcp.tool(structured_output=False)
+@mcp.tool(structured_output=False, annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False))
 def add_note(title: str, body: str) -> str:
     """新增一条学习笔记，返回笔记 id 和读取地址。需要 notes:write。"""
     token = _current_user()
@@ -136,7 +137,7 @@ def _confirm_delete(note_id: str) -> Elicit[DeleteDecision]:
     )
 
 
-@mcp.tool(structured_output=False)
+@mcp.tool(structured_output=False, annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
 def delete_note(
     note_id: str,
     decision: Annotated[ElicitationResult[DeleteDecision], Resolve(_confirm_delete)],
@@ -155,7 +156,7 @@ def delete_note(
     return f"已删除 {note.id}：{note.title}（用户 {token.subject}）"
 
 
-@mcp.tool(structured_output=False)
+@mcp.tool(structured_output=False, annotations=ToolAnnotations(read_only_hint=True, destructive_hint=False))
 def search_notes(query: str) -> str:
     """按标题或正文搜索当前用户的笔记。query 为空时返回该用户的全部笔记。"""
     token = _current_user()
