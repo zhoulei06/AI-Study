@@ -92,7 +92,12 @@ def apply_event(doc: dict[str, Any], event: dict[str, Any]) -> None:
         if message is None:
             messages.append(dict(id=mid, role="tool", toolCallId=event["toolCallId"], content=event["content"]))
     elif kind == "ACTIVITY_SNAPSHOT":
-        if event["activityType"] == "card" and entry is None:
+        if event["activityType"] == "plan":
+            if entry is None:
+                entries.append(dict(kind="plan", id=mid, plan=event["content"]))
+            else:
+                entry["plan"] = event["content"]
+        elif event["activityType"] == "card" and entry is None:
             entries.append(dict(kind="card", id=mid, **event["content"]))
         elif event["activityType"] == "mcp-confirm":
             doc["mcpConfirm"] = event["content"]

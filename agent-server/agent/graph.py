@@ -225,6 +225,7 @@ def compile_agent(
     checkpointer: BaseCheckpointSaver,
     store: BaseStore,
     memory_middleware: list[AgentMiddleware],
+    planning: AgentMiddleware | None = None,
 ) -> CompiledStateGraph:
     confirm = HumanInTheLoopMiddleware(
         interrupt_on={
@@ -238,7 +239,9 @@ def compile_agent(
         model=model,
         tools=tools,
         system_prompt=system_prompt,
-        middleware=[budget, *memory_middleware, confirm],
+        # Inspect the final prompt after plan/memory additions at the budget boundary.
+        middleware=([planning, *memory_middleware, budget, confirm] if planning
+                    else [budget, *memory_middleware, confirm]),
         checkpointer=checkpointer,
         store=store,
         state_schema=SessionState,

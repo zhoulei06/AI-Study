@@ -3,7 +3,6 @@ import { ChatTranscript } from "./components/ChatTranscript";
 import { ConversationHistory } from "./components/ConversationHistory";
 import { useAgentChat } from "./hooks/useAgentChat";
 import { useConversations } from "./hooks/useConversations";
-import { agentUrl } from "./lib/conversationApi";
 import "./App.css";
 
 export function App() {
@@ -55,8 +54,8 @@ export function App() {
       />
       <div className="page">
         <header className="top">
-          <div><p className="eyebrow">AG-UI</p><h1>学习助手</h1></div>
-          <p className="endpoint">{agentUrl}</p>
+          <div><p className="eyebrow">规划 · 执行 · 验证</p><h1>Nexus Agent</h1></div>
+          <p className="endpoint">面向目标的通用智能助手</p>
         </header>
 
         <ChatTranscript
@@ -89,7 +88,7 @@ export function App() {
             value={chat.draft}
             disabled={history.loading || chat.remoteRunning || !history.activeId}
             rows={2}
-            placeholder="输入问题，Enter 发送，Shift+Enter 换行"
+            placeholder="描述你的目标，Enter 发送，Shift+Enter 换行"
             onChange={(event) => chat.setDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {

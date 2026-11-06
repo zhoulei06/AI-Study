@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import threading
 import uuid
@@ -28,7 +29,7 @@ from .graph import (
     rejected_message,
 )
 from .limits import AgentLimits, LimitTracker
-from .errors import ErrorInfo, ErrorCode, make_error
+from .errors import ApplicationError, ErrorInfo, ErrorCode, make_error
 from .runtime.context import current_run, isolated_run
 from .runtime.models import configure_model
 from .runtime.retry import RetryPolicy, call_with_retry, current_attempt, mark_model_output, reserve_model_attempt
@@ -44,7 +45,8 @@ from .memory.jobs import MemoryJobs, MemoryWorker
 from .memory.short_term import PostgresSessions, ShortTermMemory, ShortTermMiddleware
 from .tools import ToolRegistry, default_tools
 
-SYSTEM_PROMPT = """你是一个会用工具的助手。
+SYSTEM_PROMPT = """你是 Nexus Agent，一个面向通用目标的智能助手。
+帮助用户分析问题、完成任务、处理信息和组织工作；只使用实际接入的能力，不虚构联网或操作能力。
 计算、查时间、查天气用本地工具。笔记相关的事用 MCP 工具。
 不要自己编造数字、天气、笔记内容或记忆。
 系统提示里的会话摘要和长期记忆只在和当前问题有关时使用，不要把无关记忆复述出来。
@@ -97,7 +99,11 @@ class Agent:
         use_mcp: bool = True,
         thinking: bool = False,
     ):
-        self.limits = limits or AgentLimits()
+        self.limits = limits or AgentLimits(
+            max_iterations=_bounded_setting("AGENT_MAX_ITERATIONS", 16, 1, 100),
+            timeout=_bounded_setting("AGENT_TIMEOUT_SECONDS", 120, 1, 3600),
+            token_budget=_bounded_setting("AGENT_TOKEN_BUDGET", 40000, 1000, 1000000),
+        )
         self.verbose = verbose
         self.tools = tools or default_tools()
         self.mcp: McpConnection | None = None
@@ -166,15 +172,28 @@ class Agent:
         self._log(mcp.startup_summary())
 
     def _install_graph(self, system_prompt: str, user_id: str, *, tools: list[Any] | None = None) -> None:
+        from .planning import PlanningMiddleware
+
         self.repository = MemoryRepository(self.store, user_id)
         self.extractor = MemoryExtractor(self.chat_model)
         self.policy = PolicyEngine()
         self.resolver = MemoryResolver()
         self.context_builder = ContextBuilder(self.repository)
         self.short_term = ShortTermMemory()
+        available_tools = tools if tools is not None else self.tools.langchain_tools()
+        flag = os.getenv("PLANNER_ENABLED", "true").strip().lower()
+        if flag not in {"true", "1", "yes", "false", "0", "no"}:
+            raise ApplicationError(make_error(ErrorCode.CONFIGURATION_ERROR, source="planner"))
+        self.planning_enabled = flag in {"true", "1", "yes"}
+        planning = PlanningMiddleware(
+            self.chat_model, available_tools,
+            max_steps=_bounded_setting("PLANNER_MAX_STEPS", 4, 1, 6),
+            max_replans=_bounded_setting("PLANNER_MAX_REPLANS", 1, 0, 2),
+            max_step_calls=_bounded_setting("EXECUTOR_MAX_MODEL_CALLS", 4, 1, 10),
+        ) if self.planning_enabled else None
         self.graph = compile_agent(
             model=self.chat_model,
-            tools=tools if tools is not None else self.tools.langchain_tools(),
+            tools=available_tools,
             system_prompt=system_prompt,
             budget=self._budget,
             checkpointer=self.checkpointer,
@@ -183,6 +202,7 @@ class Agent:
                 ShortTermMiddleware(self.chat_model, self.short_term, self._log),
                 MemoryContextMiddleware(self.context_builder, self._log),
             ],
+            planning=planning,
         )
 
     def close(self) -> None:
@@ -261,7 +281,9 @@ class Agent:
             if snapshot.values:
                 self.graph.update_state(config, {"messages": settled}, as_node="model")
             snapshot = self.graph.get_state(config)
-        elif resume_cancelled and partial is not None and not snapshot.interrupts and not _unanswered(stored):
+        elif (resume_cancelled and partial is not None and not snapshot.interrupts
+              and not _unanswered(stored)
+              and snapshot.values.get("task", {}).get("phase") not in {"executing", "failed"}):
             return self._continue_answer(partial, stored, thread_id=thread_id, tracker=active,
                                          on_event=on_event, cancel_event=cancel_event)
         if snapshot.interrupts:
@@ -475,6 +497,8 @@ class Agent:
                 kind = chunk.get("type") if isinstance(chunk, dict) else None
                 if kind == "messages":
                     token, _metadata = chunk["data"]
+                    if any(tag in (_metadata.get("tags") or []) for tag in ("agent:internal", "agent:step")):
+                        continue
                     if not isinstance(token, AIMessageChunk):
                         continue
                     if not model_step:
@@ -666,6 +690,16 @@ class Agent:
             encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
             safe = line.encode(encoding, errors="replace").decode(encoding, errors="replace")
             print(safe, flush=True)
+
+
+def _bounded_setting(name, default, minimum, maximum):
+    try:
+        value = int(os.getenv(name, str(default)))
+        if not minimum <= value <= maximum:
+            raise ValueError(name)
+        return value
+    except ValueError:
+        raise ApplicationError(make_error(ErrorCode.CONFIGURATION_ERROR, source="planner")) from None
 
 
 def _decisions(snapshot: Any, approvals: dict[str, bool]) -> list[dict[str, str]]:

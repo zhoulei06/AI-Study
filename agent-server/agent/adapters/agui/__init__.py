@@ -39,6 +39,8 @@ class BoundLangGraphAgent(LangGraphAgent):
                     durability="sync",
                 ):
                     if "agent:internal" not in event.get("tags", []):
+                        if "agent:step" in event.get("tags", []):
+                            event = hide_step_prose(event)
                         yield event
             except Exception as exc:
                 self.failure = normalize_error(exc, source="model")
@@ -83,3 +85,15 @@ async def stream_graph(graph, graph_input, config, context):
             )
         if event.type not in excluded:
             yield event
+
+
+def hide_step_prose(event):
+    """Keep tool protocol intact without streaming unverified worker prose."""
+    field = {"on_chat_model_stream": "chunk", "on_chat_model_end": "output"}.get(event["event"])
+    if not field:
+        return event
+    data = dict(event.get("data") or {})
+    message = data.get(field)
+    if hasattr(message, "model_copy"):
+        data[field] = message.model_copy(update={"content": "", "additional_kwargs": {}})
+    return {**event, "data": data}

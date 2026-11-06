@@ -13,14 +13,21 @@
 }
 
 .page {
+  --content-width: 780px;
+  --page-gutter: 20px;
   min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  max-width: 820px;
-  margin: 0 auto;
-  padding: 24px 20px 16px;
+  padding: 24px 0 16px;
   width: 100%;
   min-width: 0;
+}
+
+.top,
+.composer {
+  width: calc(100% - 2 * var(--page-gutter));
+  max-width: var(--content-width);
+  margin-inline: auto;
 }
 
 .top {
@@ -109,6 +116,7 @@
   }
 
   .page {
-    padding: 16px 12px 12px;
+    --page-gutter: 12px;
+    padding: 16px 0 12px;
   }
 }

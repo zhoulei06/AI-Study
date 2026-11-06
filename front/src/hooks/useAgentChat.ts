@@ -2,9 +2,11 @@ import { HttpAgent, type AgentSubscriber } from "@ag-ui/client";
 import { useCallback, useRef, useState, type RefObject } from "react";
 import { agentUrl, historyRequest } from "../lib/conversationApi";
 import { readError, formatError, errorMessage, checkedFetch } from "../lib/errors";
+import { readPlan } from "../lib/plans";
 import type { ChatEntry, ConversationDetail, McpConfirm, PendingConfirm } from "../types/chat";
 
 const EXAMPLES = [
+  "帮我查询北京和上海的天气，对比后给出出行建议",
   "现在几点了？北京天气怎么样？再帮我算 23*17",
   "记一条笔记，标题是 Loop，正文是 Agent 会反复调用工具",
   "删除笔记 n3",
@@ -110,6 +112,13 @@ export function useAgentChat({ onHistoryUpdated, inputRef }: UseAgentChatOptions
         ? { ...item, result: asText(event.content) } : item));
     },
     onActivitySnapshotEvent({ event }) {
+      if (event.activityType === "plan") {
+        const plan = readPlan(event.content);
+        if (plan) setEntries((prev) => prev.some((item) => item.id === event.messageId)
+          ? prev.map((item) => item.id === event.messageId ? { kind: "plan", id: event.messageId, plan } : item)
+          : [...prev, { kind: "plan", id: event.messageId, plan }]);
+        return;
+      }
       if (event.activityType === "mcp-confirm") {
         const record = event.content;
         if (record && typeof record === "object" && "id" in record && "message" in record &&

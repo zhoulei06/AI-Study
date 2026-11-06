@@ -1,10 +1,12 @@
-# LangGraph Agent Server
+# Nexus Agent Server
+
+已加入结构化 Planner、按步骤执行、验证和有限重新规划。实现、配置及生产边界见 [规划执行架构](../docs/planner-workflow.md)。页面名称为 Nexus Agent，定位通用目标助手，能力由实际接入的工具决定。
 
 目录已由 `agent-demo` 改为 `agent-server`。生产化重构计划见 [架构方案](../docs/agent-production-plan.md)。
 
 兼容说明：Keycloak 的 OAuth client ID 继续使用已注册的 `agent-demo`；Compose 项目名也固定为 `agent-demo`，以复用已有 PostgreSQL 数据卷。这两个标识独立于目录和 Python 项目名称。
 
-模型用 DeepSeek。循环交给 LangGraph：`create_agent` 编出 model 节点和 tools 节点，`add_note` 在执行前打断等确认。
+模型用 DeepSeek。LangGraph 保存计划和执行状态；复杂任务按计划推进，每一步内部由 `create_agent` 的 model/tools 循环完成。`add_note` 在执行前打断等确认。以下展示单步骤内部的执行循环。
 
 ```text
 User

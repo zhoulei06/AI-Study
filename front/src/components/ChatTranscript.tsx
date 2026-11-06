@@ -83,10 +83,12 @@ export function ChatTranscript({
       {loading ? <p className="pending">正在加载会话…</p> : null}
       {remoteRunning ? <p className="pending">此会话仍在后台执行，正在同步历史…</p> : null}
       {cancelling ? <p className="pending" role="status">正在取消，等待当前步骤安全结束…</p> : null}
-      {cancelled ? <p className="pending" role="status">回答已中断，可继续生成并追加到原回答，也可以直接发送新问题。</p> : null}
+      {cancelled ? <p className="pending" role="status">任务已暂停，可继续未完成的步骤或回答，也可以发送新目标。</p> : null}
       {entries.length === 0 ? (
         <div className="empty">
-          <p>可以直接问时间、天气、计算，也可以记笔记、读目录。记笔记会在调用前确认，删除笔记由 MCP server 在调用中确认。</p>
+          <h2>从一个目标开始</h2>
+          <p>提问、分析信息、拆解任务或管理笔记。复杂目标会按计划逐步执行并验证结果。</p>
+          <p className="muted">当前已接入时间、演示天气、计算及 MCP 笔记工具；实际操作能力取决于已连接的工具。</p>
           <div className="examples">
             {examples.map((example) => (
               <button key={example} type="button" onClick={() => onSend(example)} disabled={busy || loading || remoteRunning || confirm !== null}>
@@ -96,7 +98,8 @@ export function ChatTranscript({
           </div>
         </div>
       ) : entries.map((entry) => (
-        <EntryView key={entry.id} entry={entry} waiting={confirm?.toolCallId === entry.id} />
+        <EntryView key={entry.id} entry={entry} waiting={confirm?.toolCallId === entry.id}
+          paused={cancelled} stopped={!busy && !remoteRunning && !!error} />
       ))}
 
       {confirm ? (
@@ -131,7 +134,22 @@ export function ChatTranscript({
   );
 }
 
-function EntryView({ entry, waiting }: { entry: ChatEntry; waiting: boolean }) {
+function EntryView({ entry, waiting, paused, stopped }: {
+  entry: ChatEntry; waiting: boolean; paused: boolean; stopped: boolean;
+}) {
+  if (entry.kind === "plan") {
+    const labels = { pending: "待执行", running: "执行中", succeeded: "已验证", failed: "未通过" };
+    const phases = { executing: "正在执行", finalizing: "汇总结果", completed: "已完成", failed: "已停止" };
+    const active = entry.plan.phase === "executing" || entry.plan.phase === "finalizing";
+    const phase = active && paused ? "已暂停" : active && stopped ? "已停止" : phases[entry.plan.phase];
+    return <article className="plan-progress" aria-label="任务计划">
+      <header><strong>任务计划</strong><span>{phase} · 第 {entry.plan.version} 版</span></header>
+      <p>{entry.plan.goal}</p>
+      <ol>{entry.plan.steps.map((step) => <li key={step.id} data-status={step.status}>
+        <span>{step.task}</span><small>{step.status === "running" && (paused || stopped) ? phase : labels[step.status]}</small>
+      </li>)}</ol>
+    </article>;
+  }
   if (entry.kind === "step") return (
     <p className={entry.running ? "step running" : "step"}>
       <span className="step-dot" /><span>{entry.name}</span>
@@ -139,10 +157,13 @@ function EntryView({ entry, waiting }: { entry: ChatEntry; waiting: boolean }) {
     </p>
   );
   if (entry.kind === "reasoning") return (
-    <article className="reasoning">
-      <header><span>思考</span>{entry.streaming ? <span className="caret" /> : null}</header>
+    <details className="reasoning">
+      <summary>
+        <span>{entry.streaming ? "正在思考…" : "思考过程"}</span>
+        <span className="reasoning-toggle" aria-hidden="true" />
+      </summary>
       {entry.text ? <pre>{entry.text}</pre> : null}
-    </article>
+    </details>
   );
   if (entry.kind === "tool") return (
     <article className="tool">

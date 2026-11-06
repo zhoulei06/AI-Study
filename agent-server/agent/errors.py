@@ -33,6 +33,8 @@ class ErrorCode(str, Enum):
     STREAM_INTERRUPTED = "STREAM_INTERRUPTED"
     PERSISTENCE_FAILED = "PERSISTENCE_FAILED"
     CONFIGURATION_ERROR = "CONFIGURATION_ERROR"
+    PLANNING_FAILED = "PLANNING_FAILED"
+    VERIFICATION_FAILED = "VERIFICATION_FAILED"
 
 
 MESSAGES = {
@@ -58,6 +60,8 @@ MESSAGES = {
     ErrorCode.STREAM_INTERRUPTED: "回答生成途中发生错误，已有内容已保留，请重新发起请求。",
     ErrorCode.PERSISTENCE_FAILED: "运行记录保存失败，请重新加载会话。",
     ErrorCode.CONFIGURATION_ERROR: "服务配置不正确，请联系维护人员检查。",
+    ErrorCode.PLANNING_FAILED: "未能生成有效的执行计划，请补充目标或缩小任务范围。",
+    ErrorCode.VERIFICATION_FAILED: "任务步骤未通过验证，已停止自动执行。请检查工具结果或调整目标。",
 }
 
 

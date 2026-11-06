@@ -1,5 +1,6 @@
 import type { HttpAgent } from "@ag-ui/client";
 import type { ErrorDetails } from "../lib/errors";
+import type { PlanProgress } from "../lib/plans";
 
 export type CardField = { label: string; value: string };
 
@@ -12,6 +13,7 @@ export type PendingConfirm = {
 export type McpConfirm = { id: string; message: string };
 
 export type ChatEntry =
+  | { kind: "plan"; id: string; plan: PlanProgress }
   | { kind: "user"; id: string; text: string }
   | { kind: "step"; id: string; name: string; running: boolean }
   | { kind: "reasoning"; id: string; text: string; streaming: boolean }

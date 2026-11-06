@@ -1,5 +1,7 @@
 # 结构化错误协议
 
+规划执行新增 `PLANNING_FAILED`（计划不合法或不可用）和 `VERIFICATION_FAILED`（验证未通过、工具被拒绝或无法安全推进），均沿用相同错误结构。工具原始结果和步骤详情仍通过工具事件、内部检查点定位，错误提示不包含模型原文。
+
 ## 定义与语义
 
 协议版本为 `1`。后端定义在 `agent-server/agent/errors.py`，前端解析和展示位于 `front/src/lib/errors.ts`。

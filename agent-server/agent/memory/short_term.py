@@ -26,6 +26,7 @@ Summarize = Callable[[str, list[BaseMessage]], str]
 
 class SessionState(AgentState):
     summary: NotRequired[str]
+    task: NotRequired[dict[str, Any]]
 
 
 class ShortTermMemory:
@@ -63,6 +64,9 @@ class ShortTermMiddleware(AgentMiddleware):
         self.log = log
 
     def before_model(self, state: SessionState, runtime: Any) -> dict[str, Any] | None:
+        # Preserve step evidence until verification. Input budget still applies.
+        if state.get("task", {}).get("phase") in {"executing", "finalizing"}:
+            return None
         update = self.memory.plan(
             list(state["messages"]),
             str(state.get("summary") or ""),

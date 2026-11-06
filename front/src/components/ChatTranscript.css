@@ -1,5 +1,7 @@
 .transcript {
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable both-edges;
   min-height: 0;
   overscroll-behavior: contain;
   padding: 20px 0 28px;
@@ -9,6 +11,10 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+  width: calc(100% - 2 * var(--page-gutter));
+  max-width: var(--content-width);
+  margin-inline: auto;
+  overflow-wrap: anywhere;
 }
 
 .empty p {
@@ -239,18 +245,64 @@
   padding: 2px 0 2px 12px;
 }
 
-.reasoning header {
+.reasoning summary {
   display: flex;
   align-items: center;
   gap: 8px;
   color: #6f675c;
   font-size: 13px;
+  list-style: none;
+  cursor: pointer;
+  padding: 6px 0;
+  user-select: none;
+}
+
+.reasoning summary::-webkit-details-marker {
+  display: none;
+}
+
+.reasoning summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 150ms ease;
+  margin-right: 3px;
+}
+
+.reasoning[open] summary::before {
+  transform: rotate(45deg);
+}
+
+.reasoning summary:hover {
+  color: #8a5a12;
+}
+
+.reasoning summary:focus-visible {
+  outline: 2px solid #8a5a12;
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.reasoning-toggle {
+  margin-left: auto;
+  font-size: 12px;
+  color: #968b7a;
+}
+
+.reasoning-toggle::after {
+  content: "展开";
+}
+
+.reasoning[open] .reasoning-toggle::after {
+  content: "收起";
 }
 
 .reasoning pre {
   margin: 6px 0 0;
-  max-height: 180px;
-  overflow: auto;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
   font: inherit;
   font-size: 14px;
@@ -346,3 +398,24 @@
   border-radius: 10px;
   padding: 10px 12px;
 }
+.plan-progress {
+  margin: 14px 0;
+  padding: 18px;
+  border: 1px solid var(--border, #dce3ed);
+  border-radius: 14px;
+  background: var(--surface, #f7f9fc);
+}
+.plan-progress header, .plan-progress li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+.plan-progress header span, .plan-progress small { color: #64748b; font-size: 12px; }
+.plan-progress ol { margin: 12px 0 0; padding: 0; list-style: none; counter-reset: plan; }
+.plan-progress li { counter-increment: plan; padding: 8px 0; }
+.plan-progress li > span::before { content: counter(plan) ". "; color: #64748b; }
+.plan-progress li small { flex-shrink: 0; }
+.plan-progress li[data-status="running"] small { color: #2563eb; }
+.plan-progress li[data-status="succeeded"] small { color: #15803d; }
+.plan-progress li[data-status="failed"] small { color: #b91c1c; }

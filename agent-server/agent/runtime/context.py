@@ -103,7 +103,18 @@ def invoke_auxiliary(model: Any, messages: list, *, purpose: str) -> Any:
 
     def operation():
         attempt = current_attempt()
-        configured = configure_model(model, timeout=attempt.timeout)
+        settings = {}
+        if context is not None:
+            context.check()
+            # Conservative estimate, consistent with the main model boundary.
+            size = sum(len(str(message.content)) for message in messages)
+            remaining = context.tracker.limits.token_budget - context.tracker.total_tokens
+            if size >= remaining:
+                raise LimitStop("token_budget", "辅助调用输入超过剩余上下文预算")
+            if hasattr(model, "request_timeout"):
+                settings["max_tokens"] = min(getattr(model, "max_tokens", None) or remaining,
+                                             remaining - size)
+        configured = configure_model(model, timeout=attempt.timeout, **settings)
         return configured.invoke(
             messages,
             config={
